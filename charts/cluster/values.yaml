@@ -21,6 +21,55 @@ version:
   postgis: "3.4"
 
 ###
+# -- Global object store configuration (shared between backup and recovery)
+objectStore:
+  # -- Overrides the provider specific default endpoint. Defaults to:
+  # S3: https://s3.<region>.amazonaws.com"
+  # Leave empty if using the default S3 endpoint
+  endpointURL: ""
+  # -- Specifies a CA bundle to validate a privately signed certificate.
+  endpointCA:
+    # -- Creates a secret with the given value if true, otherwise uses an existing secret.
+    create: false
+    name: ""
+    key: ""
+    value: ""
+  # -- Overrides the provider specific default path. Defaults to:
+  # S3: s3://<bucket><path>
+  # Azure: https://<storageAccount>.<serviceName>.core.windows.net/<containerName><path>
+  # Google: gs://<bucket><path>
+  destinationPath: ""
+  # -- One of `s3`, `azure` or `google`
+  provider: s3
+  s3:
+    region: ""
+    bucket: ""
+    path: "/"
+    accessKey: ""
+    secretKey: ""
+    # -- Use the role based authentication without providing explicitly the keys
+    inheritFromIAMRole: false
+  azure:
+    path: "/"
+    connectionString: ""
+    storageAccount: ""
+    storageKey: ""
+    storageSasToken: ""
+    containerName: ""
+    serviceName: blob
+    inheritFromAzureAD: false
+  google:
+    path: "/"
+    bucket: ""
+    gkeEnvironment: false
+    applicationCredentials: ""
+  secret:
+    # -- Whether to create a secret for the object store credentials
+    create: true
+    # -- Name of the object store credentials secret
+    name: ""
+
+###
 # -- Cluster mode of operation. Available modes:
 # * `standalone` - default mode. Creates new or updates an existing CNPG cluster.
 # * `replica` - Creates a replica cluster from an existing CNPG cluster. # TODO
@@ -37,16 +86,22 @@ recovery:
   # * `import` - Import one or more databases from an existing Postgres cluster.
   method: backup
 
+  # -- Whether to use the global objectStore configuration. If true, the global objectStore settings will be used.
+  # If false, the local recovery configuration below will be used.
+  useGlobalObjectStore: true
+
   ## -- Point in time recovery target. Specify one of the following:
   pitrTarget:
     # -- Time in RFC3339 format
     time: ""
+#    backupID: ""
 
   ##
   # -- Backup Recovery Method
   backupName: ""  # Name of the backup to recover from. Required if method is `backup`.
 
   ##
+  # -- LOCAL RECOVERY CONFIGURATION (only used when useGlobalObjectStore: false)
   # -- The original cluster name when used in backups. Also known as serverName.
   clusterName: ""
   # -- Name of the database used by the application. Default: `app`.
@@ -303,8 +358,6 @@ cluster:
     customQueries: []
     #  - name: "pg_cache_hit_ratio"
     #    query: "SELECT current_database() as datname, sum(heap_blks_hit) / (sum(heap_blks_hit) + sum(heap_blks_read)) as ratio FROM pg_statio_user_tables;"
-    #    target_databases: ["*"]
-    #    predicate_query: "SELECT '{{ .Values.version.postgresql }}';"
     #    metrics:
     #      - datname:
     #          usage: "LABEL"
@@ -368,11 +421,19 @@ cluster:
   additionalLabels: {}
   annotations: {}
 
+plugins: []
+
+objectstore_spec: {}
 
 backups:
   # -- You need to configure backups manually, so backups are disabled by default.
   enabled: false
 
+  # -- Whether to use the global objectStore configuration. If true, the global objectStore settings will be used.
+  # If false, the local backup configuration below will be used.
+  useGlobalObjectStore: true
+
+  # -- LOCAL BACKUP CONFIGURATION (only used when useGlobalObjectStore: false)
   # -- Overrides the provider specific default endpoint. Defaults to:
   # S3: https://s3.<region>.amazonaws.com"
   endpointURL: ""  # Leave empty if using the default S3 endpoint
@@ -444,6 +505,8 @@ backups:
       backupOwnerReference: self
       # -- Backup method, can be `barmanObjectStore` (default) or `volumeSnapshot`
       method: barmanObjectStore
+      pluginConfiguration:
+        name: ""
 
   # -- Retention policy for backups
   retentionPolicy: "30d"
@@ -455,6 +518,22 @@ imageCatalog:
   images: []
     # - image: ghcr.io/your_repo/your_image:your_tag
     #   major: 16
+
+# -- List of application secrets to create
+secrets: []
+  # -
+  #   # -- Whether to create this secret
+  #   enabled: true
+  #   # -- Name of the secret
+  #   name: app-secret
+  #   # -- Secret type (defaults to Opaque)
+  #   type: kubernetes.io/basic-auth
+  #   # -- String data for the secret (will be base64 encoded automatically)
+  #   stringData:
+  #     username: "app"
+  #     password: "your-password-here"
+  #   # -- Raw data for the secret (must be base64 encoded)
+  #   data: {}
 
 # -- List of PgBouncer poolers
 poolers: []

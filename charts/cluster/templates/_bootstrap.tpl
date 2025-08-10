@@ -43,7 +43,7 @@ bootstrap:
     {{- end }}
 
 externalClusters:
-  {{- include "cluster.externalSourceCluster" (list "pgBaseBackupSource" .Values.recovery.pgBaseBackup.source) | nindent 2 }}
+  {{- include "cluster.externalSourceCluster" (list "pgBaseBackupSource" .Values.recovery.pgBaseBackup.source .) | nindent 2 }}
 
 {{- else if eq .Values.recovery.method "import" }}
   initdb:
@@ -78,13 +78,27 @@ externalClusters:
       {{- end }}
 
 externalClusters:
-  {{- include "cluster.externalSourceCluster" (list "importSource" .Values.recovery.import.source) | nindent 2 }}
+  {{- include "cluster.externalSourceCluster" (list "importSource" .Values.recovery.import.source .) | nindent 2 }}
 
+{{/* object_store */}}
 {{- else }}
   recovery:
-    {{- with .Values.recovery.pitrTarget.time }}
+    {{- with .Values.recovery.pitrTarget }}
+    {{- if or .time .backupID }}
     recoveryTarget:
-      targetTime: {{ . }}
+    {{- if .time }}
+      targetTime: {{ .time }}
+    {{- end }}
+    {{- if .backupID }}
+      backupID: {{ .backupID }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    {{- if eq .Values.recovery.method "backup" }}
+    backup:
+      name: {{ .Values.recovery.backupName }}
+    {{- else if eq .Values.recovery.method "object_store" }}
+    source: objectStoreRecoveryCluster
     {{- end }}
     {{ with .Values.recovery.database }}
     database: {{ . }}
@@ -92,19 +106,29 @@ externalClusters:
     {{ with .Values.recovery.owner }}
     owner: {{ . }}
     {{- end }}
-    {{- if eq .Values.recovery.method "backup" }}
-    backup:
-      name: {{ .Values.recovery.backupName }}
-    {{- else if eq .Values.recovery.method "object_store" }}
-    source: objectStoreRecoveryCluster
+    {{ with .Values.recovery.secret }}
+    {{ if .name }}
+    secret:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    {{- end }}
 
 externalClusters:
   - name: objectStoreRecoveryCluster
-    barmanObjectStore:
-      serverName: {{ .Values.recovery.clusterName }}
-      {{- $d := dict "chartFullname" (include "cluster.fullname" .) "scope" .Values.recovery "secretPrefix" "recovery" -}}
-      {{- include "cluster.barmanObjectStoreConfig" $d | nindent 4 }}
-    {{- end }}
+    plugin:
+      name: barman-cloud.cloudnative-pg.io
+      parameters:
+        barmanObjectName: {{ .Values.objectstore_spec.name }}
+        {{- if .Values.recovery.useGlobalObjectStore }}
+        serverName: {{ .Values.recovery.clusterName | default (include "cluster.fullname" .) }}
+        {{- else }}
+        serverName: {{ .Values.recovery.clusterName }}
+        {{- end }}
+{{/*  - name: objectStoreRecoveryCluster*/}}
+{{/*    barmanObjectStore:*/}}
+{{/*      serverName: {{ .Values.recovery.clusterName }}*/}}
+{{/*      {{- $d := dict "chartFullname" (include "cluster.fullname" .) "scope" .Values.recovery "secretPrefix" "recovery" -}}*/}}
+{{/*      {{- include "cluster.barmanObjectStoreConfig" $d | nindent 4 }}*/}}
 {{- end }}
 {{-  else }}
   {{ fail "Invalid cluster mode!" }}

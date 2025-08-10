@@ -1,10 +1,19 @@
-{{- if and .Values.backups.enabled (eq .Values.backups.provider "s3") (not .Values.backups.s3.inheritFromIAMRole) .Values.backups.secret.create }}
+{{- $s3Config := .Values.backups.s3 }}
+{{- $secretConfig := .Values.backups.secret }}
+{{- $provider := .Values.backups.provider }}
+{{- if .Values.backups.useGlobalObjectStore }}
+  {{- $s3Config = .Values.objectStore.s3 }}
+  {{- $secretConfig = .Values.objectStore.secret }}
+  {{- $provider = .Values.objectStore.provider }}
+{{- end }}
+{{- $needsSecret := or .Values.backups.enabled (and (eq .Values.mode "recovery") (eq .Values.recovery.method "object_store") .Values.recovery.useGlobalObjectStore) .Values.objectstore_spec }}
+{{- if and $needsSecret (eq $provider "s3") (not $s3Config.inheritFromIAMRole) $secretConfig.create }}
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ default (printf "%s-backup-s3-creds" (include "cluster.fullname" .)) .Values.backups.secret.name }}
+  name: {{ $secretConfig.name | default (printf "%s-backup-s3-creds" (include "cluster.fullname" .)) }}
   namespace: {{ include "cluster.namespace" . }}
 data:
-  ACCESS_KEY_ID: {{ required ".Values.backups.s3.accessKey is required, but not specified." .Values.backups.s3.accessKey | b64enc | quote }}
-  ACCESS_SECRET_KEY: {{ required ".Values.backups.s3.secretKey is required, but not specified." .Values.backups.s3.secretKey | b64enc | quote }}
+  ACCESS_KEY_ID: {{ required "S3 accessKey is required, but not specified." $s3Config.accessKey | b64enc | quote }}
+  ACCESS_SECRET_KEY: {{ required "S3 secretKey is required, but not specified." $s3Config.secretKey | b64enc | quote }}
 {{- end }}

@@ -1,0 +1,48 @@
+{{- with .Values.objectstore_spec }}
+{{- $backupConfig := $.Values.backups }}
+{{- if $.Values.backups.useGlobalObjectStore }}
+  {{- $backupConfig = $.Values.objectStore }}
+{{- end }}
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: {{ .name | default (include "cluster.fullname" $) }}
+  namespace: {{ include "cluster.namespace" $ }}
+spec:
+  retentionPolicy: {{ .retentionPolicy | default "1m" | quote }}
+  {{- if .configuration }}
+  configuration:
+    destinationPath: {{ .configuration.destinationPath }}
+    endpointURL: {{ .configuration.endpointURL }}
+    wal:
+      compression: {{ .configuration.wal.compression | default "gzip" | quote }}
+    s3Credentials:
+      accessKeyId:
+        name: {{ $backupConfig.secret.name | default (printf "%s-backup-s3-creds" (include "cluster.fullname" $)) }}
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: {{ $backupConfig.secret.name | default (printf "%s-backup-s3-creds" (include "cluster.fullname" $)) }}
+        key: ACCESS_SECRET_KEY
+  {{- else if $backupConfig }}
+  configuration:
+    {{- if $backupConfig.destinationPath }}
+    destinationPath: {{ $backupConfig.destinationPath }}
+    {{- else if eq $backupConfig.provider "s3" }}
+    destinationPath: "s3://{{ required "S3 bucket is required" $backupConfig.s3.bucket }}{{ $backupConfig.s3.path }}"
+    {{- end }}
+    {{- if $backupConfig.endpointURL }}
+    endpointURL: {{ $backupConfig.endpointURL }}
+    {{- else if eq $backupConfig.provider "s3" }}
+    endpointURL: "https://s3.{{ required "S3 region is required" $backupConfig.s3.region }}.amazonaws.com"
+    {{- end }}
+    wal:
+      compression: {{ $.Values.backups.wal.compression | default "gzip" | quote }}
+    s3Credentials:
+      accessKeyId:
+        name: {{ $backupConfig.secret.name | default (printf "%s-backup-s3-creds" (include "cluster.fullname" $)) }}
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: {{ $backupConfig.secret.name | default (printf "%s-backup-s3-creds" (include "cluster.fullname" $)) }}
+        key: ACCESS_SECRET_KEY
+  {{- end }}
+{{- end }}
